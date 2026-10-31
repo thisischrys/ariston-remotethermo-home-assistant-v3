@@ -61,10 +61,34 @@ class AristonSwitch(AristonEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        await self.entity_description.set_value(self, True)
-        self.async_write_ha_state()
+        key = self.entity_description.key
+        in_data = hasattr(self.device, "data") and key in self.device.data
+        old_val = self.device.data.get(key) if in_data else None
+        if in_data:
+            self.device.data[key] = True
+            self.coordinator.async_set_updated_data(None)
+        try:
+            await self.entity_description.set_value(self, True)
+        except Exception:
+            if in_data:
+                self.device.data[key] = old_val
+                self.coordinator.async_set_updated_data(None)
+            raise
+        self.coordinator.async_set_updated_data(None)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the device off."""
-        await self.entity_description.set_value(self, False)
-        self.async_write_ha_state()
+        key = self.entity_description.key
+        in_data = hasattr(self.device, "data") and key in self.device.data
+        old_val = self.device.data.get(key) if in_data else None
+        if in_data:
+            self.device.data[key] = False
+            self.coordinator.async_set_updated_data(None)
+        try:
+            await self.entity_description.set_value(self, False)
+        except Exception:
+            if in_data:
+                self.device.data[key] = old_val
+                self.coordinator.async_set_updated_data(None)
+            raise
+        self.coordinator.async_set_updated_data(None)

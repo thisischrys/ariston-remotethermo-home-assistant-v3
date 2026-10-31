@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from ariston.const import NuosSplitProperties
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -99,5 +100,30 @@ class AristonNumber(AristonEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float):
         """Update the current value."""
+        if self.entity_description.key == NuosSplitProperties.REDUCED_TEMP:
+            old_comfort = self.device.water_heater_target_temperature
+            old_reduced = self.device.water_heater_reduced_temperature
+            comfort = (
+                old_comfort
+                if old_comfort is not None
+                else self.device.water_heater_minimum_temperature
+            )
+            self.device.data[NuosSplitProperties.REDUCED_TEMP] = value
+            self.coordinator.async_set_updated_data(None)
+            try:
+                await self.device.api.async_set_nuos_temperature(
+                    self.device.gw,
+                    comfort,
+                    value,
+                    old_comfort,
+                    old_reduced,
+                )
+            except Exception:
+                self.device.data[NuosSplitProperties.REDUCED_TEMP] = old_reduced
+                self.coordinator.async_set_updated_data(None)
+                raise
+            self.coordinator.async_set_updated_data(None)
+            return
+
         await self.entity_description.set_native_value(self, value)
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(None)

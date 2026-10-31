@@ -121,7 +121,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN][entry.unique_id][BUS_ERRORS_COORDINATOR] = (
             bus_errors_coordinator
         )
-        await bus_errors_coordinator.async_config_entry_first_refresh()
+        try:
+            await bus_errors_coordinator.async_refresh()
+        except Exception as error:
+            _LOGGER.warning(
+                "Could not fetch initial bus errors for %s: %s",
+                device.name,
+                error,
+            )
 
         if device.has_metering:
             energy_interval_minutes = entry.options.get(

@@ -36,3 +36,19 @@ class DeviceDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         self.device = device
+
+    async def _async_update_data(self):
+        """Fetch data from API endpoint, preserving state if cloud returns empty dict."""
+        prev_data = (
+            dict(self.device.data)
+            if getattr(self.device, "data", None)
+            else None
+        )
+        result = await super()._async_update_data()
+        if prev_data and hasattr(self.device, "data") and not self.device.data:
+            _LOGGER.warning(
+                "Ariston cloud returned empty data for %s; preserving last known state",
+                self.name,
+            )
+            self.device.data = prev_data
+        return result

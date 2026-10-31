@@ -1,0 +1,24 @@
+{
+  "entity": {
+    "water_heater": {
+      "ariston_water_heater": {
+        "default": "mdi:water-boiler",
+        "state": {
+          "GREEN": "mdi:leaf",
+          "COMFORT": "mdi:water-boiler",
+          "FAST": "mdi:rocket-launch"
+        },
+        "state_attributes": {
+          "operation_mode": {
+            "default": "mdi:water-boiler",
+            "state": {
+              "GREEN": "mdi:leaf",
+              "COMFORT": "mdi:water-boiler",
+              "FAST": "mdi:rocket-launch"
+            }
+          }
+        }
+      }
+    }
+  }
+}

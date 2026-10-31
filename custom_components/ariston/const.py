@@ -26,7 +26,10 @@ from ariston.const import (
     VelisDeviceProperties,
     WheType,
 )
-from homeassistant.components.binary_sensor import BinarySensorEntityDescription
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntityDescription,
+)
 from homeassistant.components.climate import ClimateEntityDescription
 from homeassistant.components.number import NumberEntityDescription
 from homeassistant.components.select import SelectEntityDescription
@@ -59,7 +62,7 @@ BUS_ERRORS_SCAN_INTERVAL: Final[str] = "bus_errors_scan_interval"
 API_URL_SETTING: Final[str] = "api_url_setting"
 API_USER_AGENT: Final[str] = "api_user_agent"
 
-DEFAULT_SCAN_INTERVAL_SECONDS: Final[int] = 180
+DEFAULT_SCAN_INTERVAL_SECONDS: Final[int] = 60
 DEFAULT_ENERGY_SCAN_INTERVAL_MINUTES: Final[int] = 60
 DEFAULT_BUS_ERRORS_SCAN_INTERVAL_SECONDS: Final[int] = 600
 
@@ -186,6 +189,7 @@ ARISTON_CLIMATE_TYPES: list[AristonClimateEntityDescription] = [
 ARISTON_WATER_HEATER_TYPES: list[AristonWaterHeaterEntityDescription] = [
     AristonWaterHeaterEntityDescription(
         key="AristonWaterHeater",
+        translation_key="ariston_water_heater",
         extra_states=[
             {
                 EXTRA_STATE_ATTRIBUTE: ATTR_TARGET_TEMP_STEP,
@@ -197,6 +201,7 @@ ARISTON_WATER_HEATER_TYPES: list[AristonWaterHeaterEntityDescription] = [
     ),
     AristonWaterHeaterEntityDescription(
         key="AristonWaterHeater",
+        translation_key="ariston_water_heater",
         extra_states=[
             {
                 EXTRA_STATE_ATTRIBUTE: ATTR_TARGET_TEMP_STEP,

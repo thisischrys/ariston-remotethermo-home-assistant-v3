@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from ariston.const import SystemType
+from ariston.const import (
+    ARISTON_VELIS,
+    NuosSplitProperties,
+    PlantData,
+    SlpDeviceSettings,
+    SystemType,
+    VelisBaseDeviceProperties,
+    WheType,
+)
 from homeassistant.components.water_heater import (
     WaterHeaterEntity,
     WaterHeaterEntityFeature,
@@ -51,6 +59,8 @@ async def async_setup_entry(
 class AristonWaterHeater(AristonEntity, WaterHeaterEntity):
     """Ariston Water Heater Device."""
 
+    _attr_translation_key = "ariston_water_heater"
+
     def __init__(
         self,
         coordinator: DeviceDataUpdateCoordinator,
@@ -70,11 +80,6 @@ class AristonWaterHeater(AristonEntity, WaterHeaterEntity):
         return f"{self.device.gateway}-water_heater"
 
     @property
-    def icon(self):
-        """Return the icon to use in the frontend."""
-        return "mdi:water-pump"
-
-    @property
     def current_temperature(self):
         """Return the temperature."""
         return self.device.water_heater_current_temperature
@@ -87,11 +92,24 @@ class AristonWaterHeater(AristonEntity, WaterHeaterEntity):
     @property
     def target_temperature(self):
         """Return the temperature we try to reach."""
-        return self.device.water_heater_target_temperature
+        target = self.device.water_heater_target_temperature
+        max_t = self.max_temp
+        if target is not None and max_t is not None and target > max_t:
+            return max_t
+        return target
 
     @property
     def max_temp(self):
         """Return the maximum temperature."""
+        if (
+            self.device.whe_type == WheType.NuosSplit
+            and self.current_operation == "GREEN"
+        ):
+            max_green = getattr(self.device, "plant_settings", {}).get(
+                SlpDeviceSettings.SLP_MAX_GREEN_TEMPERATURE
+            )
+            if max_green is not None:
+                return max_green
         return self.device.water_heater_maximum_temperature
 
     @property
@@ -121,7 +139,11 @@ class AristonWaterHeater(AristonEntity, WaterHeaterEntity):
     @property
     def operation_list(self):
         """List of available operation modes."""
-        return self.device.water_heater_mode_operation_texts
+        return [
+            mode
+            for mode in self.device.water_heater_mode_operation_texts
+            if mode != "IMEMORY"
+        ]
 
     @property
     def current_operation(self):
@@ -134,24 +156,88 @@ class AristonWaterHeater(AristonEntity, WaterHeaterEntity):
             raise ValueError(f"Missing parameter {ATTR_TEMPERATURE}")
 
         temperature = kwargs[ATTR_TEMPERATURE]
+        if self.max_temp is not None and temperature > self.max_temp:
+            temperature = self.max_temp
         _LOGGER.debug(
             "Setting temperature to %d for %s",
             temperature,
             self.name,
         )
 
+        if self.device.whe_type == WheType.NuosSplit:
+            old_comfort = self.device.water_heater_target_temperature
+            old_reduced = self.device.water_heater_reduced_temperature
+            old_proc = self.device.data.get(NuosSplitProperties.PROC_REQ_TEMP)
+            self.device.data[NuosSplitProperties.COMFORT_TEMP] = temperature
+            self.device.data[NuosSplitProperties.PROC_REQ_TEMP] = temperature
+            self.coordinator.async_set_updated_data(None)
+            try:
+                await self.device.api.async_set_nuos_temperature(
+                    self.device.gw,
+                    temperature,
+                    old_reduced if old_reduced is not None else 0,
+                    old_comfort,
+                    old_reduced,
+                )
+            except Exception:
+                self.device.data[NuosSplitProperties.COMFORT_TEMP] = old_comfort
+                self.device.data[NuosSplitProperties.PROC_REQ_TEMP] = old_proc
+                self.coordinator.async_set_updated_data(None)
+                raise
+            self.coordinator.async_set_updated_data(None)
+            return
+
         await self.device.async_set_water_heater_temperature(temperature)
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(None)
 
     async def async_set_operation_mode(self, operation_mode):
         """Set operation mode."""
+        if self.device.whe_type == WheType.NuosSplit:
+            old_op_mode = self.device.data.get(NuosSplitProperties.OP_MODE)
+            new_mode_val = self.device.water_heater_mode[operation_mode].value
+            self.device.data[NuosSplitProperties.OP_MODE] = new_mode_val
+            self.coordinator.async_set_updated_data(None)
+            try:
+                await self.device.api._async_post(
+                    f"{self.device.api._AristonAPI__api_url}{ARISTON_VELIS}/{PlantData.Slp.value}/{self.device.gw}/operativeMode",
+                    {
+                        "new": new_mode_val,
+                        "old": old_op_mode if old_op_mode is not None else 1,
+                    },
+                )
+            except Exception:
+                self.device.data[NuosSplitProperties.OP_MODE] = old_op_mode
+                self.coordinator.async_set_updated_data(None)
+                raise
+            self.device.data[NuosSplitProperties.OP_MODE] = new_mode_val
+            self.coordinator.async_set_updated_data(None)
+            return
+
         await self.device.async_set_water_heater_operation_mode(operation_mode)
-        self.async_write_ha_state()
+        self.coordinator.async_set_updated_data(None)
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the water heater off."""
-        await self.device.async_set_power(False)
+        old_power = self.device.data.get(VelisBaseDeviceProperties.ON)
+        self.device.data[VelisBaseDeviceProperties.ON] = False
+        self.coordinator.async_set_updated_data(None)
+        try:
+            await self.device.async_set_power(False)
+        except Exception:
+            self.device.data[VelisBaseDeviceProperties.ON] = old_power
+            self.coordinator.async_set_updated_data(None)
+            raise
+        self.coordinator.async_set_updated_data(None)
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the water heater on."""
-        await self.device.async_set_power(True)
+        old_power = self.device.data.get(VelisBaseDeviceProperties.ON)
+        self.device.data[VelisBaseDeviceProperties.ON] = True
+        self.coordinator.async_set_updated_data(None)
+        try:
+            await self.device.async_set_power(True)
+        except Exception:
+            self.device.data[VelisBaseDeviceProperties.ON] = old_power
+            self.coordinator.async_set_updated_data(None)
+            raise
+        self.coordinator.async_set_updated_data(None)
